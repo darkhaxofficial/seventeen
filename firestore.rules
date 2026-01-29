@@ -1,18 +1,21 @@
 /**
  * Core Philosophy: This ruleset enforces a strict user-ownership model for the "Everyone Fails at 17" game. 
  * A user's profile and their game attempts are considered private data, accessible only by the authenticated
- * user who created them. Global game statistics are treated as public, read-only data for all clients.
+ * user who created them. The global leaderboard is publicly readable, but users can only write their own scores.
+ * Global game statistics are treated as public, read-only data for all clients.
  *
  * Data Structure: The data is organized hierarchically to reflect ownership. A top-level `/users` collection
  * contains individual user documents, identified by their Firebase Auth UID. Each user document contains a nested
- * `/attempts` subcollection for their game history. A separate top-level `/global_statistics` collection holds
- * a single document for aggregated game data.
+ * `/attempts` subcollection for their game history. A separate top-level `/leaderboard` collection holds top scores,
+ * and a `/global_statistics` collection holds a single document for aggregated game data.
  *
  * Key Security Decisions:
  * - User Enumeration Disabled: Listing documents in the top-level `/users` collection is explicitly disallowed
  *   to protect user privacy and prevent scraping.
  * - Strict Ownership: All operations within a user's data tree (`/users/{userId}`) require the request's
  *   authentication UID to match the `{userId}` in the path.
+ * - Public Leaderboard with Secure Writes: The `/leaderboard` collection is publicly readable so all players can see top scores.
+ *   However, `create` operations are restricted, allowing users to only submit scores linked to their own UID. Updates and deletes are disallowed.
  * - Read-Only Global Data: The `/global_statistics` document is publicly readable but cannot be modified by
  *   any client. This prevents data tampering and ensures that updates are only performed by a trusted
  *   server-side process (e.g., a Cloud Function).
@@ -24,8 +27,8 @@
  * using the path, eliminating the need for slow and costly `get()` calls to other documents. Furthermore, we enforce
  * that the `userId` field within an `Attempt` document matches the path on creation, ensuring relational integrity.
  *
- * Structural Segregation: User-private data (`/users/{userId}/**`) is kept in a completely separate collection
- * tree from public-read data (`/global_statistics`). This segregation provides a strong security boundary, simplifies
+ * Structural Segregation: User-private data (`/users/{userId}/**`), public leaderboard data (`/leaderboard`), and public-read
+ * statistics (`/global_statistics`) are kept in separate collection trees. This segregation provides strong security boundaries, simplifies
  * rules, and ensures that queries for private data can never accidentally leak public information or vice-versa.
  */
 rules_version = '2';
@@ -127,6 +130,20 @@ service cloud.firestore {
       }
     }
 
+    /**
+     * @description Provides public read access to the global leaderboard and allows authenticated users to submit their own scores.
+     * @path /leaderboard/{entryId}
+     * @allow (get, list) Any client can read the leaderboard.
+     * @allow (create) An authenticated user 'user123' can create a new entry if the `userId` in the document matches their own UID.
+     * @deny (update, delete) No client can modify or delete leaderboard entries.
+     * @principle Separates public game data from private user data and secures write access based on user identity.
+     */
+    match /leaderboard/{entryId} {
+      allow get, list: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+    
     /**
      * @description Provides public, read-only access to the global game statistics.
      * @path /global_statistics/{docId}

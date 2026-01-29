@@ -8,6 +8,7 @@ import {
 } from '@/ai/flows/generate-rage-message';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   useFirebase,
   useUser,
@@ -19,14 +20,8 @@ import {
   setDocumentNonBlocking,
   useMemoFirebase,
 } from '@/firebase';
-import {
-  collection,
-  doc,
-  query,
-  orderBy,
-  limit,
-} from 'firebase/firestore';
-import { Coffee } from 'lucide-react';
+import { collection, doc, query, orderBy, limit } from 'firebase/firestore';
+import { Coffee, Crown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type GameState = 'idle' | 'playing' | 'stopped';
@@ -48,9 +43,18 @@ type Attempt = {
 
 type UserProfile = {
   id: string;
+  displayName?: string;
   personalBestAccuracy?: number;
   totalAttempts?: number;
   lastPlayedTime?: string;
+};
+
+type LeaderboardEntry = {
+  userId: string;
+  userName: string;
+  stoppedTime: number;
+  deltaFromTarget: number;
+  timestamp: string;
 };
 
 // Fallback message generator if AI fails
@@ -87,6 +91,9 @@ export default function Home() {
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const { toast } = useToast();
 
+  const [userName, setUserName] = useState('');
+  const [showNameInput, setShowNameInput] = useState(false);
+
   const { auth, firestore } = useFirebase();
   const { user, isUserLoading } = useUser();
 
@@ -96,21 +103,19 @@ export default function Home() {
   );
   const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
 
-  const attemptsQuery = useMemoFirebase(
+  const leaderboardQuery = useMemoFirebase(
     () =>
-      user
-        ? query(
-            collection(firestore, 'users', user.uid, 'attempts'),
-            orderBy('deltaFromTarget', 'asc'),
-            limit(5)
-          )
-        : null,
-    [firestore, user]
+      query(
+        collection(firestore, 'leaderboard'),
+        orderBy('deltaFromTarget', 'asc'),
+        limit(10)
+      ),
+    [firestore]
   );
   const {
     data: leaderboardScores,
     isLoading: isLeaderboardLoading,
-  } = useCollection<Attempt>(attemptsQuery);
+  } = useCollection<LeaderboardEntry>(leaderboardQuery);
 
   const requestRef = useRef<number>();
   const startTimeRef = useRef<number | null>(null);
@@ -120,6 +125,17 @@ export default function Home() {
       initiateAnonymousSignIn(auth);
     }
   }, [auth, user, isUserLoading]);
+
+  useEffect(() => {
+    if (userProfile) {
+      if (userProfile.displayName) {
+        setUserName(userProfile.displayName);
+        setShowNameInput(false);
+      } else {
+        setShowNameInput(true);
+      }
+    }
+  }, [userProfile]);
 
   const manipulateTime = useCallback((t: number): number => {
     let speed = 1;
@@ -157,6 +173,21 @@ export default function Home() {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, []);
+
+  const handleNameSubmit = useCallback(async () => {
+    if (!user || !userName.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Name',
+        description: 'Please enter a valid name.',
+      });
+      return;
+    }
+    const userDocRef = doc(firestore, 'users', user.uid);
+    setDocumentNonBlocking(userDocRef, { displayName: userName.trim() }, { merge: true });
+    setShowNameInput(false);
+    toast({ title: 'Name Saved!', description: 'Your name will now appear on the leaderboard.' });
+  }, [user, userName, firestore, toast]);
 
   const stopTimer = useCallback(async () => {
     if (gameState !== 'playing' || !user) return;
@@ -196,6 +227,20 @@ export default function Home() {
       personalBestAccuracy: newPersonalBest,
     };
     setDocumentNonBlocking(userDocRef, userUpdateData, { merge: true });
+
+    // Add to global leaderboard
+    const currentUserName = userProfile?.displayName || userName || 'Anonymous';
+    if (currentUserName !== 'Anonymous') {
+      const leaderboardColRef = collection(firestore, 'leaderboard');
+      const newLeaderboardEntry: Omit<LeaderboardEntry, 'id'> = {
+        userId: user.uid,
+        userName: currentUserName,
+        stoppedTime: finalTime,
+        deltaFromTarget: absDelta,
+        timestamp: new Date().toISOString(),
+      };
+      addDocumentNonBlocking(leaderboardColRef, newLeaderboardEntry);
+    }
     // --- End Firestore Logic ---
 
     setResult({ finalTime, delta, aiResponse: null });
@@ -218,7 +263,7 @@ export default function Home() {
     } finally {
       setIsAiGenerating(false);
     }
-  }, [gameState, displayedTime, toast, user, firestore, userProfile]);
+  }, [gameState, displayedTime, toast, user, firestore, userProfile, userName]);
 
   const isPerfect = result.aiResponse?.message === 'PERFECT';
 
@@ -321,9 +366,27 @@ export default function Home() {
                   Try Again
                 </Button>
 
+                {showNameInput && (
+                  <div className="flex w-full flex-col items-center gap-2">
+                    <p className="font-headline text-lg uppercase tracking-widest text-white/80">
+                      Add your name to the leaderboard!
+                    </p>
+                    <div className="flex w-full gap-2">
+                      <Input
+                        value={userName}
+                        onChange={(e) => setUserName(e.target.value)}
+                        placeholder="Enter your name"
+                        className="text-center"
+                        onKeyDown={(e) => e.key === 'Enter' && handleNameSubmit()}
+                      />
+                      <Button onClick={handleNameSubmit}>Save</Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="w-full">
                   <h2 className="font-headline text-xl uppercase tracking-[0.3em] text-white/60">
-                    Your Best
+                    Leaderboard
                   </h2>
                   <div className="h-4" />
                   {isLeaderboardLoading && (
@@ -339,24 +402,26 @@ export default function Home() {
                         {leaderboardScores.map((score, index) => (
                           <li
                             key={score.id}
-                            className="flex items-center justify-between rounded-md bg-white/5 p-3 font-body"
+                            className={cn(
+                              "flex items-center justify-between rounded-md bg-white/5 p-3 font-body",
+                              user?.uid === score.userId && 'ring-2 ring-primary'
+                            )}
                           >
-                            <span className="w-8 font-bold text-white/60">
-                              #{index + 1}
+                            <span className="w-8 font-bold text-white/60 flex items-center gap-2">
+                              {index === 0 && <Crown className="w-4 h-4 text-yellow-400" />}
+                              {index > 0 && `#${index + 1}`}
                             </span>
-                            <span className="text-lg font-bold">
-                              {score.stoppedTime.toFixed(2)}s
-                            </span>
-                            <span className="w-20 text-right text-sm text-white/50">
+                             <span className="truncate font-medium">{score.userName}</span>
+                            <span className="w-24 text-right text-sm text-white/50">
                               {score.stoppedTime > 17 ? '+' : ''}
-                              {(score.stoppedTime - 17).toFixed(3)}
+                              {(score.stoppedTime - 17).toFixed(3)}s
                             </span>
                           </li>
                         ))}
                       </ol>
                     ) : (
                       <p className="text-white/50">
-                        No scores yet. Be the first!
+                        The leaderboard is empty. Be the first!
                       </p>
                     ))}
                 </div>

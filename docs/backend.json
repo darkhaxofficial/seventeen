@@ -10,6 +10,10 @@
           "type": "string",
           "description": "Unique identifier for the user. (Primary Key)"
         },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name for the leaderboard."
+        },
         "personalBestAccuracy": {
           "type": "number",
           "description": "The user's best (lowest) absolute difference from 17.00 seconds across all attempts.",
@@ -71,6 +75,49 @@
         "deltaFromTarget",
         "timestamp",
         "deviceType"
+      ]
+    },
+    "LeaderboardEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "LeaderboardEntry",
+      "type": "object",
+      "description": "Represents a single score on the global leaderboard.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the entry."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user who set the score."
+        },
+        "userName": {
+          "type": "string",
+          "description": "The display name of the user."
+        },
+        "stoppedTime": {
+          "type": "number",
+          "description": "The time at which the user stopped the timer.",
+          "format": "float"
+        },
+        "deltaFromTarget": {
+          "type": "number",
+          "description": "The absolute difference between the stopped time and 17.00 seconds.",
+          "format": "float"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The timestamp of when the attempt was made.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "userName",
+        "stoppedTime",
+        "deltaFromTarget",
+        "timestamp"
       ]
     },
     "GlobalStatistics": {
@@ -149,6 +196,22 @@
         }
       },
       {
+        "path": "/leaderboard/{entryId}",
+        "definition": {
+          "entityName": "LeaderboardEntry",
+          "schema": {
+            "$ref": "#/backend/entities/LeaderboardEntry"
+          },
+          "description": "Stores top scores for the global leaderboard. Publicly readable, but writes are restricted to the owner of the score.",
+          "params": [
+            {
+              "name": "entryId",
+              "description": "Unique ID for the leaderboard entry."
+            }
+          ]
+        }
+      },
+      {
         "path": "/global_statistics/{singleton}",
         "definition": {
           "entityName": "GlobalStatistics",
@@ -165,6 +228,6 @@
         }
       }
     ],
-    "reasoning": "The Firestore data structure is designed to support the \"Everyone Fails at 17\" game, focusing on user data, attempt tracking, and global statistics. It emphasizes authorization independence and optimized querying for game-related data.\n\n1.  **Users Collection (`/users/{userId}`):** Stores user-specific data, including personal best accuracy, total attempts, and last played time. The `userId` is derived from Firebase Authentication's `uid`. This structure adheres to path-based ownership for private user data, simplifying security rules.\n\n2.  **Attempts Subcollection (`/users/{userId}/attempts/{attemptId}`):** Each user has a subcollection of attempts. This hierarchical structure establishes a clear ownership model (User 1:N Attempt). Each attempt document stores details like stopped time, delta from the target time (17 seconds), timestamp, and device type. Authorization independence is guaranteed because access control is implicitly tied to the `userId` in the path. List operations are automatically scoped to the user.\n\n3.  **Global Statistics Document (`/global_statistics/singleton`):** A singleton document stores aggregated game statistics. Access to this document is configured via rules to ensure it is only writable by an administrative function (if write access is needed). This isolates global data from user-specific data.\n\n**Authorization Independence:** The structure achieves authorization independence by avoiding `get()` calls in security rules. User attempts are stored in a subcollection of the user's document, associating the attempt directly with the user's `uid`. Security rules can therefore directly verify that `request.auth.uid == userId` for creating or modifying attempts.\n\n**QAPs (Rules are not Filters):**\n\n*   The segregation of user data and global statistics into separate collections supports secure list operations. Listing attempts is always scoped to a specific user, preventing exposure of other users' data.\n*   The singleton nature of the global statistics document means that listing is not a concern, as there's only one document, and access can be restricted via rules."
+    "reasoning": "The Firestore data structure is designed to support the \"Everyone Fails at 17\" game, focusing on user data, attempt tracking, and global statistics. It emphasizes authorization independence and optimized querying for game-related data.\n\n1.  **Users Collection (`/users/{userId}`):** Stores user-specific data, including their display name, personal best accuracy, total attempts, and last played time. The `userId` is derived from Firebase Authentication's `uid`. This structure adheres to path-based ownership for private user data, simplifying security rules.\n\n2.  **Attempts Subcollection (`/users/{userId}/attempts/{attemptId}`):** Each user has a subcollection of attempts. This hierarchical structure establishes a clear ownership model (User 1:N Attempt). Each attempt document stores details like stopped time, delta from the target time (17 seconds), timestamp, and device type. Authorization independence is guaranteed because access control is implicitly tied to the `userId` in the path. List operations are automatically scoped to the user.\n\n3. **Leaderboard Collection (`/leaderboard/{entryId}`):** A root collection to store top scores globally. This allows for public, efficient querying of the top players without exposing any user's full attempt history. Writes are restricted to ensure users can only post their own scores.\n\n4.  **Global Statistics Document (`/global_statistics/singleton`):** A singleton document stores aggregated game statistics. Access to this document is configured via rules to ensure it is only writable by an administrative function (if write access is needed). This isolates global data from user-specific data.\n\n**Authorization Independence:** The structure achieves authorization independence by avoiding `get()` calls in security rules. User attempts are stored in a subcollection of the user's document, associating the attempt directly with the user's `uid`. Security rules can therefore directly verify that `request.auth.uid == userId` for creating or modifying attempts. Leaderboard entries are also verified against the authenticated user's UID on create.\n\n**QAPs (Rules are not Filters):**\n\n*   The segregation of user data, private attempts, and the public leaderboard into separate collections supports secure list operations. Listing attempts is always scoped to a specific user, and the leaderboard is designed to be public."
   }
 }
