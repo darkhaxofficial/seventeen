@@ -17,6 +17,11 @@ type Result = {
   aiResponse: GenerateRageMessageOutput | null;
 };
 
+type Score = {
+  finalTime: number;
+  delta: number;
+};
+
 // Fallback message generator if AI fails
 function getFallbackMessage(delta: number): GenerateRageMessageOutput {
   const abs = Math.abs(delta);
@@ -49,11 +54,23 @@ export default function Home() {
     aiResponse: null,
   });
   const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [scores, setScores] = useState<Score[]>([]);
   const { toast } = useToast();
 
   const requestRef = useRef<number>();
   const startTimeRef = useRef<number | null>(null);
-  const timeoutRef = useRef<NodeJS.Timeout>();
+
+  // Load scores from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedScores = localStorage.getItem('seventeen-leaderboard');
+      if (savedScores) {
+        setScores(JSON.parse(savedScores));
+      }
+    } catch (e) {
+      console.error('Failed to load scores from localStorage', e);
+    }
+  }, []);
 
   const manipulateTime = useCallback((t: number): number => {
     let speed = 1;
@@ -87,10 +104,8 @@ export default function Home() {
   }, [gameLoop]);
 
   useEffect(() => {
-    // Game no longer starts automatically.
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
 
@@ -104,6 +119,30 @@ export default function Home() {
 
     const finalTime = displayedTime;
     const delta = finalTime - 17;
+
+    // Leaderboard logic
+    setScores(prevScores => {
+      const newScore = { finalTime, delta };
+      const updatedScores = [...prevScores, newScore]
+        .sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta))
+        .slice(0, 5); // Keep top 5
+
+      try {
+        localStorage.setItem(
+          'seventeen-leaderboard',
+          JSON.stringify(updatedScores)
+        );
+      } catch (error) {
+        console.error('Failed to save scores to localStorage', error);
+        toast({
+          variant: 'destructive',
+          title: 'Leaderboard Error',
+          description: 'Could not save your score.',
+        });
+      }
+      return updatedScores;
+    });
+
     setResult({ finalTime, delta, aiResponse: null });
     setIsAiGenerating(true);
 
@@ -124,10 +163,6 @@ export default function Home() {
     } finally {
       setIsAiGenerating(false);
     }
-
-    timeoutRef.current = setTimeout(() => {
-      setGameState('idle');
-    }, 2500);
   }, [gameState, displayedTime, toast]);
 
   const isPerfect = result.aiResponse?.message === 'PERFECT';
@@ -154,7 +189,7 @@ export default function Home() {
   return (
     <main
       className={cn(
-        'flex h-dvh w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#05040b] to-[#0b0614] text-white selection:bg-purple-500/30',
+        'flex min-h-dvh w-full flex-col items-center justify-center overflow-auto bg-gradient-to-br from-[#05040b] to-[#0b0614] py-8 text-white selection:bg-purple-500/30',
         gameState === 'playing' && 'cursor-pointer'
       )}
       onClick={gameState === 'playing' ? stopTimer : undefined}
@@ -204,23 +239,65 @@ export default function Home() {
             {result.finalTime.toFixed(2)}
           </p>
           <div className="h-4" />
-          <div className="flex min-h-[6rem] flex-col items-center justify-center animate-in fade-in-0 delay-300 duration-500">
+          <div className="flex min-h-[3rem] flex-col items-center justify-center animate-in fade-in-0 delay-300 duration-500">
             {isAiGenerating ? (
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-purple-400"></div>
             ) : (
               result.aiResponse && (
-                <>
+                <div className="flex flex-col items-center justify-center">
                   {renderResultText()}
-                  <div className="h-12" />
+                  <div className="h-4" />
                   <p className="font-headline text-base text-white/50 sm:text-lg">
                     {result.aiResponse.secondaryTaunt
                       ? result.aiResponse.secondaryTaunt
                       : result.aiResponse.socialProofLine}
                   </p>
-                </>
+                </div>
               )
             )}
           </div>
+
+          {!isAiGenerating && (
+            <div className="mt-8 flex w-full max-w-sm flex-col items-center gap-8 animate-in fade-in-0 delay-500 duration-500">
+              <Button
+                onClick={startGame}
+                size="lg"
+                className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
+              >
+                Try Again
+              </Button>
+
+              <div className="w-full">
+                <h2 className="font-headline text-xl uppercase tracking-[0.3em] text-white/60">
+                  Leaderboard
+                </h2>
+                <div className="h-4" />
+                {scores.length > 0 ? (
+                  <ol className="space-y-2 text-white/80">
+                    {scores.map((score, index) => (
+                      <li
+                        key={index}
+                        className="flex items-center justify-between rounded-md bg-white/5 p-3 font-body"
+                      >
+                        <span className="w-8 font-bold text-white/60">
+                          #{index + 1}
+                        </span>
+                        <span className="text-lg font-bold">
+                          {score.finalTime.toFixed(2)}s
+                        </span>
+                        <span className="w-20 text-right text-sm text-white/50">
+                          {score.delta > 0 ? '+' : ''}
+                          {score.delta.toFixed(3)}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="text-white/50">No scores yet. Be the first!</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </main>
