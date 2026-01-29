@@ -8,6 +8,26 @@ import {
 } from '@/ai/flows/generate-rage-message';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import {
+  useFirebase,
+  useUser,
+  useFirestore,
+  useCollection,
+  useDoc,
+  initiateAnonymousSignIn,
+  addDocumentNonBlocking,
+  setDocumentNonBlocking,
+  useMemoFirebase,
+} from '@/firebase';
+import {
+  collection,
+  doc,
+  query,
+  orderBy,
+  limit,
+} from 'firebase/firestore';
+import { Coffee } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type GameState = 'idle' | 'playing' | 'stopped';
 
@@ -17,9 +37,20 @@ type Result = {
   aiResponse: GenerateRageMessageOutput | null;
 };
 
-type Score = {
-  finalTime: number;
-  delta: number;
+// From backend.json entities
+type Attempt = {
+  stoppedTime: number;
+  deltaFromTarget: number;
+  timestamp: string;
+  deviceType: string;
+  userId: string;
+};
+
+type UserProfile = {
+  id: string;
+  personalBestAccuracy?: number;
+  totalAttempts?: number;
+  lastPlayedTime?: string;
 };
 
 // Fallback message generator if AI fails
@@ -54,23 +85,41 @@ export default function Home() {
     aiResponse: null,
   });
   const [isAiGenerating, setIsAiGenerating] = useState(false);
-  const [scores, setScores] = useState<Score[]>([]);
   const { toast } = useToast();
+
+  const { auth, firestore } = useFirebase();
+  const { user, isUserLoading } = useUser();
+
+  const userProfileRef = useMemoFirebase(
+    () => (user ? doc(firestore, 'users', user.uid) : null),
+    [firestore, user]
+  );
+  const { data: userProfile } = useDoc<UserProfile>(userProfileRef);
+
+  const attemptsQuery = useMemoFirebase(
+    () =>
+      user
+        ? query(
+            collection(firestore, 'users', user.uid, 'attempts'),
+            orderBy('deltaFromTarget', 'asc'),
+            limit(5)
+          )
+        : null,
+    [firestore, user]
+  );
+  const {
+    data: leaderboardScores,
+    isLoading: isLeaderboardLoading,
+  } = useCollection<Attempt>(attemptsQuery);
 
   const requestRef = useRef<number>();
   const startTimeRef = useRef<number | null>(null);
 
-  // Load scores from localStorage on mount
   useEffect(() => {
-    try {
-      const savedScores = localStorage.getItem('seventeen-leaderboard');
-      if (savedScores) {
-        setScores(JSON.parse(savedScores));
-      }
-    } catch (e) {
-      console.error('Failed to load scores from localStorage', e);
+    if (auth && !user && !isUserLoading) {
+      initiateAnonymousSignIn(auth);
     }
-  }, []);
+  }, [auth, user, isUserLoading]);
 
   const manipulateTime = useCallback((t: number): number => {
     let speed = 1;
@@ -110,7 +159,7 @@ export default function Home() {
   }, []);
 
   const stopTimer = useCallback(async () => {
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing' || !user) return;
 
     if (requestRef.current) {
       cancelAnimationFrame(requestRef.current);
@@ -119,29 +168,35 @@ export default function Home() {
 
     const finalTime = displayedTime;
     const delta = finalTime - 17;
+    const absDelta = Math.abs(delta);
 
-    // Leaderboard logic
-    setScores(prevScores => {
-      const newScore = { finalTime, delta };
-      const updatedScores = [...prevScores, newScore]
-        .sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta))
-        .slice(0, 5); // Keep top 5
+    // --- Firestore Logic ---
+    const newAttempt: Attempt = {
+      userId: user.uid,
+      stoppedTime: finalTime,
+      deltaFromTarget: absDelta,
+      timestamp: new Date().toISOString(),
+      deviceType: 'desktop', // This could be dynamic
+    };
 
-      try {
-        localStorage.setItem(
-          'seventeen-leaderboard',
-          JSON.stringify(updatedScores)
-        );
-      } catch (error) {
-        console.error('Failed to save scores to localStorage', error);
-        toast({
-          variant: 'destructive',
-          title: 'Leaderboard Error',
-          description: 'Could not save your score.',
-        });
-      }
-      return updatedScores;
-    });
+    const attemptsColRef = collection(firestore, 'users', user.uid, 'attempts');
+    addDocumentNonBlocking(attemptsColRef, newAttempt);
+
+    const userDocRef = doc(firestore, 'users', user.uid);
+    const newTotalAttempts = (userProfile?.totalAttempts || 0) + 1;
+    const newPersonalBest = Math.min(
+      userProfile?.personalBestAccuracy ?? Infinity,
+      absDelta
+    );
+
+    const userUpdateData = {
+      id: user.uid, // Required by security rules on create
+      totalAttempts: newTotalAttempts,
+      lastPlayedTime: new Date().toISOString(),
+      personalBestAccuracy: newPersonalBest,
+    };
+    setDocumentNonBlocking(userDocRef, userUpdateData, { merge: true });
+    // --- End Firestore Logic ---
 
     setResult({ finalTime, delta, aiResponse: null });
     setIsAiGenerating(true);
@@ -163,7 +218,7 @@ export default function Home() {
     } finally {
       setIsAiGenerating(false);
     }
-  }, [gameState, displayedTime, toast]);
+  }, [gameState, displayedTime, toast, user, firestore, userProfile]);
 
   const isPerfect = result.aiResponse?.message === 'PERFECT';
 
@@ -178,128 +233,162 @@ export default function Home() {
       );
     }
     return (
-      <p className="font-headline text-2xl uppercase tracking-widest text-white/80">
-        {result.delta > 0 ? '+' : ''}
-        {result.delta.toFixed(2)}{' '}
-        <span className="ml-2">{result.aiResponse.message}</span>
-      </p>
+      <div className="flex flex-col items-center gap-1">
+        <p className="font-headline text-xl uppercase tracking-widest text-white/80 sm:text-2xl">
+          {result.delta > 0 ? '+' : ''}
+          {result.delta.toFixed(2)}{' '}
+          <span className="ml-2">{result.aiResponse.message}</span>
+        </p>
+        <p className="font-headline text-sm text-white/50 sm:text-base">
+          {result.aiResponse.secondaryTaunt
+            ? result.aiResponse.secondaryTaunt
+            : result.aiResponse.socialProofLine}
+        </p>
+      </div>
     );
   };
 
   return (
-    <main
-      className={cn(
-        'flex min-h-dvh w-full flex-col items-center justify-center overflow-auto bg-gradient-to-br from-[#05040b] to-[#0b0614] py-8 text-white selection:bg-purple-500/30',
-        gameState === 'playing' && 'cursor-pointer'
-      )}
-      onClick={gameState === 'playing' ? stopTimer : undefined}
-    >
-      {gameState === 'idle' && (
-        <div className="flex flex-col items-center justify-center p-4 text-center animate-in fade-in-0 duration-500">
-          <h1 className="font-headline text-4xl uppercase tracking-[0.3em] text-white/80">
-            Everyone Fails at 17
-          </h1>
-          <p className="mt-4 max-w-md text-white/60">
-            Can you stop the timer at exactly 17.00 seconds? The timer might not
-            be as trustworthy as you think.
-          </p>
-          <div className="h-12" />
-          <Button
-            onClick={startGame}
-            size="lg"
-            className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
-          >
-            Start Game
-          </Button>
-        </div>
-      )}
+    <>
+      <main
+        className={cn(
+          'flex min-h-dvh w-full flex-col items-center justify-center overflow-auto bg-gradient-to-br from-[#05040b] to-[#0b0614] p-4 pb-20 text-white selection:bg-purple-500/30',
+          gameState === 'playing' && 'cursor-pointer'
+        )}
+        onClick={gameState === 'playing' ? stopTimer : undefined}
+      >
+        {gameState === 'idle' && (
+          <div className="flex flex-col items-center justify-center text-center animate-in fade-in-0 duration-500">
+            <h1 className="font-headline text-4xl uppercase tracking-[0.3em] text-white/80">
+              Everyone Fails at 17
+            </h1>
+            <p className="mt-4 max-w-md text-white/60">
+              Can you stop the timer at exactly 17.00 seconds? The timer might
+              not be as trustworthy as you think.
+            </p>
+            <div className="h-12" />
+            <Button
+              onClick={startGame}
+              size="lg"
+              className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
+              disabled={isUserLoading}
+            >
+              {isUserLoading ? 'Connecting...' : 'Start Game'}
+            </Button>
+          </div>
+        )}
 
-      {gameState === 'playing' && (
-        <div className="flex flex-col items-center justify-center animate-in fade-in-0 duration-500">
-          <p className="font-headline text-lg uppercase tracking-[0.3em] text-white/60">
-            Click anywhere to stop
-          </p>
-          <div className="h-8" />
-          <p className="font-body text-[clamp(6rem,25vw,9rem)] font-bold leading-none text-white drop-shadow-[0_0_15px_hsla(var(--primary),0.5)]">
-            {displayedTime > 0 ? displayedTime.toFixed(2) : '0.00'}
-          </p>
-        </div>
-      )}
+        {gameState === 'playing' && (
+          <div className="flex flex-col items-center justify-center animate-in fade-in-0 duration-500">
+            <p className="font-headline text-lg uppercase tracking-[0.3em] text-white/60">
+              Click anywhere to stop
+            </p>
+            <div className="h-8" />
+            <p className="font-body text-[clamp(6rem,25vw,9rem)] font-bold leading-none text-white drop-shadow-[0_0_15px_hsla(var(--primary),0.5)]">
+              {displayedTime > 0 ? displayedTime.toFixed(2) : '0.00'}
+            </p>
+          </div>
+        )}
 
-      {gameState === 'stopped' && (
-        <div className="flex flex-col items-center justify-center px-4 text-center animate-in fade-in-0 duration-500">
-          <p
-            className={cn(
-              'font-body text-[clamp(6rem,25vw,9rem)] font-bold leading-none text-white transition-all duration-500',
-              isPerfect
-                ? 'drop-shadow-[0_0_25px_hsl(var(--primary))] text-purple-300'
-                : 'drop-shadow-[0_0_15px_hsla(var(--primary),0.5)]'
-            )}
-          >
-            {result.finalTime.toFixed(2)}
-          </p>
-          <div className="h-4" />
-          <div className="flex min-h-[3rem] flex-col items-center justify-center animate-in fade-in-0 delay-300 duration-500">
-            {isAiGenerating ? (
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-purple-400"></div>
-            ) : (
-              result.aiResponse && (
-                <div className="flex flex-col items-center justify-center">
-                  {renderResultText()}
+        {gameState === 'stopped' && (
+          <div className="flex w-full flex-col items-center justify-center text-center animate-in fade-in-0 duration-500">
+            <p
+              className={cn(
+                'font-body text-[clamp(6rem,25vw,9rem)] font-bold leading-none text-white transition-all duration-500',
+                isPerfect
+                  ? 'drop-shadow-[0_0_25px_hsl(var(--primary))] text-purple-300'
+                  : 'drop-shadow-[0_0_15px_hsla(var(--primary),0.5)]'
+              )}
+            >
+              {result.finalTime.toFixed(2)}
+            </p>
+            <div className="h-4" />
+            <div className="flex min-h-[4rem] flex-col items-center justify-center animate-in fade-in-0 delay-300 duration-500">
+              {isAiGenerating ? (
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-white/20 border-t-purple-400"></div>
+              ) : (
+                result.aiResponse && renderResultText()
+              )}
+            </div>
+
+            {!isAiGenerating && (
+              <div className="mt-8 flex w-full max-w-sm flex-col items-center gap-8 animate-in fade-in-0 delay-500 duration-500">
+                <Button
+                  onClick={startGame}
+                  size="lg"
+                  className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
+                >
+                  Try Again
+                </Button>
+
+                <div className="w-full">
+                  <h2 className="font-headline text-xl uppercase tracking-[0.3em] text-white/60">
+                    Your Best
+                  </h2>
                   <div className="h-4" />
-                  <p className="font-headline text-base text-white/50 sm:text-lg">
-                    {result.aiResponse.secondaryTaunt
-                      ? result.aiResponse.secondaryTaunt
-                      : result.aiResponse.socialProofLine}
-                  </p>
+                  {isLeaderboardLoading && (
+                    <div className="space-y-2">
+                      <Skeleton className="h-[58px] w-full" />
+                      <Skeleton className="h-[58px] w-full" />
+                      <Skeleton className="h-[58px] w-full" />
+                    </div>
+                  )}
+                  {!isLeaderboardLoading &&
+                    (leaderboardScores && leaderboardScores.length > 0 ? (
+                      <ol className="space-y-2 text-white/80">
+                        {leaderboardScores.map((score, index) => (
+                          <li
+                            key={score.id}
+                            className="flex items-center justify-between rounded-md bg-white/5 p-3 font-body"
+                          >
+                            <span className="w-8 font-bold text-white/60">
+                              #{index + 1}
+                            </span>
+                            <span className="text-lg font-bold">
+                              {score.stoppedTime.toFixed(2)}s
+                            </span>
+                            <span className="w-20 text-right text-sm text-white/50">
+                              {score.stoppedTime > 17 ? '+' : ''}
+                              {(score.stoppedTime - 17).toFixed(3)}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <p className="text-white/50">
+                        No scores yet. Be the first!
+                      </p>
+                    ))}
                 </div>
-              )
+              </div>
             )}
           </div>
-
-          {!isAiGenerating && (
-            <div className="mt-8 flex w-full max-w-sm flex-col items-center gap-8 animate-in fade-in-0 delay-500 duration-500">
-              <Button
-                onClick={startGame}
-                size="lg"
-                className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
-              >
-                Try Again
-              </Button>
-
-              <div className="w-full">
-                <h2 className="font-headline text-xl uppercase tracking-[0.3em] text-white/60">
-                  Leaderboard
-                </h2>
-                <div className="h-4" />
-                {scores.length > 0 ? (
-                  <ol className="space-y-2 text-white/80">
-                    {scores.map((score, index) => (
-                      <li
-                        key={index}
-                        className="flex items-center justify-between rounded-md bg-white/5 p-3 font-body"
-                      >
-                        <span className="w-8 font-bold text-white/60">
-                          #{index + 1}
-                        </span>
-                        <span className="text-lg font-bold">
-                          {score.finalTime.toFixed(2)}s
-                        </span>
-                        <span className="w-20 text-right text-sm text-white/50">
-                          {score.delta > 0 ? '+' : ''}
-                          {score.delta.toFixed(3)}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="text-white/50">No scores yet. Be the first!</p>
-                )}
-              </div>
-            </div>
-          )}
+        )}
+      </main>
+      <footer className="fixed bottom-0 left-0 right-0 z-20 h-14 border-t border-white/10 bg-background/50 backdrop-blur-sm">
+        <div className="mx-auto flex h-full max-w-5xl items-center justify-between px-4 text-sm text-white/50">
+          <p>
+            Made with ❤️ by{' '}
+            <a
+              href="https://x.com/iamdarkhax"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-white/80 hover:text-primary"
+            >
+              DarkHax
+            </a>
+          </p>
+          <a
+            href="https://www.buymeacoffee.com/darkhax"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-md px-3 py-1.5 hover:bg-white/10 hover:text-white"
+          >
+            <Coffee size={16} />
+            <span className="hidden sm:inline">Buy me a coffee</span>
+          </a>
         </div>
-      )}
-    </main>
+      </footer>
+    </>
   );
 }
