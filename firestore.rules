@@ -1,0 +1,146 @@
+/**
+ * Core Philosophy: This ruleset enforces a strict user-ownership model for the "Everyone Fails at 17" game. 
+ * A user's profile and their game attempts are considered private data, accessible only by the authenticated
+ * user who created them. Global game statistics are treated as public, read-only data for all clients.
+ *
+ * Data Structure: The data is organized hierarchically to reflect ownership. A top-level `/users` collection
+ * contains individual user documents, identified by their Firebase Auth UID. Each user document contains a nested
+ * `/attempts` subcollection for their game history. A separate top-level `/global_statistics` collection holds
+ * a single document for aggregated game data.
+ *
+ * Key Security Decisions:
+ * - User Enumeration Disabled: Listing documents in the top-level `/users` collection is explicitly disallowed
+ *   to protect user privacy and prevent scraping.
+ * - Strict Ownership: All operations within a user's data tree (`/users/{userId}`) require the request's
+ *   authentication UID to match the `{userId}` in the path.
+ * - Read-Only Global Data: The `/global_statistics` document is publicly readable but cannot be modified by
+ *   any client. This prevents data tampering and ensures that updates are only performed by a trusted
+ *   server-side process (e.g., a Cloud Function).
+ * - User Profiles: Client-side deletion of user profiles is disallowed to prevent accidental data loss or
+ *   the orphaning of related data.
+ *
+ * Denormalization for Authorization: The structure is designed for efficient and secure rules. Storing attempts
+ * in a subcollection under the user (`/users/{userId}/attempts/{attemptId}`) makes ownership checks instantaneous
+ * using the path, eliminating the need for slow and costly `get()` calls to other documents. Furthermore, we enforce
+ * that the `userId` field within an `Attempt` document matches the path on creation, ensuring relational integrity.
+ *
+ * Structural Segregation: User-private data (`/users/{userId}/**`) is kept in a completely separate collection
+ * tree from public-read data (`/global_statistics`). This segregation provides a strong security boundary, simplifies
+ * rules, and ensures that queries for private data can never accidentally leak public information or vice-versa.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------------
+    // Helper Functions
+    // ------------------------------------------------------------------------
+
+    /**
+     * Checks if a user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the currently authenticated user's UID matches the provided userId.
+     * This is the fundamental check for data ownership.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Checks for ownership on an existing document. Used for update and delete
+     * operations to prevent acting on non-existent data.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * Validates that a new User document has an 'id' field that correctly
+     * matches the user's UID from the path, ensuring relational integrity.
+     */
+    function isCreatingOwnUserDoc(userId) {
+      return request.resource.data.id == userId;
+    }
+
+    /**
+     * Ensures the 'id' field of a User document is immutable upon update.
+     * This prevents changing the document's fundamental ownership link.
+     */
+    function isUpdatingOwnUserDoc() {
+      return request.resource.data.id == resource.data.id;
+    }
+
+    /**
+     * Validates that a new Attempt document has a 'userId' field that correctly
+     * matches the owner's UID from the path.
+     */
+    function isCreatingOwnAttempt(userId) {
+      return request.resource.data.userId == userId;
+    }
+
+    /**
+     * Ensures the 'userId' field of an Attempt document is immutable upon update,
+     * preventing an attempt from being reassigned to a different user.
+     */
+    function isUpdatingOwnAttempt() {
+      return request.resource.data.userId == resource.data.userId;
+    }
+
+    // ------------------------------------------------------------------------
+    // Collection Rules
+    // ------------------------------------------------------------------------
+
+    /**
+     * @description Manages user profile documents. Only the owner can create, read, or update their own profile.
+     * @path /users/{userId}
+     * @allow (get) An authenticated user with UID 'user123' reading their own document at `/users/user123`.
+     * @deny (list) Any user attempting to list all documents in the `/users` collection.
+     * @deny (update) A user 'userABC' attempting to update the document at `/users/user123`.
+     * @principle Restricts access to a user's own data tree and prevents user enumeration.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && isCreatingOwnUserDoc(userId);
+      allow update: if isExistingOwner(userId) && isUpdatingOwnUserDoc();
+      allow delete: if false;
+
+      /**
+       * @description Secures a user's game attempts. The owner can perform all operations on their own attempts.
+       * @path /users/{userId}/attempts/{attemptId}
+       * @allow (create) An authenticated user 'user123' creating a new attempt document in `/users/user123/attempts/`.
+       * @allow (list) An authenticated user 'user123' listing all of their own attempts.
+       * @deny (get) A user 'userABC' trying to read an attempt at `/users/user123/attempts/attemptXYZ`.
+       * @principle Enforces document ownership for all operations within a user-specific subcollection.
+       */
+      match /attempts/{attemptId} {
+        allow get: if isOwner(userId);
+        allow list: if isOwner(userId);
+        allow create: if isOwner(userId) && isCreatingOwnAttempt(userId);
+        allow update: if isExistingOwner(userId) && isUpdatingOwnAttempt();
+        allow delete: if isExistingOwner(userId);
+      }
+    }
+
+    /**
+     * @description Provides public, read-only access to the global game statistics.
+     * @path /global_statistics/{docId}
+     * @allow (get) Any user, including unauthenticated ones, reading the document at `/global_statistics/singleton`.
+     * @deny (create) Any client attempting to create a new document in this collection.
+     * @deny (update) Any client attempting to modify the global statistics document.
+     * @principle Protects aggregated data from client-side modification, reserving writes for trusted server environments.
+     */
+    match /global_statistics/{docId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}
