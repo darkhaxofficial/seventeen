@@ -7,6 +7,7 @@ import {
   type GenerateRageMessageOutput,
 } from '@/ai/flows/generate-rage-message';
 import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
 
 type GameState = 'idle' | 'playing' | 'stopped';
 
@@ -78,6 +79,7 @@ export default function Home() {
   );
 
   const startGame = useCallback(() => {
+    setDisplayedTime(0);
     setResult({ finalTime: 0, delta: 0, aiResponse: null });
     setGameState('playing');
     startTimeRef.current = null;
@@ -85,14 +87,12 @@ export default function Home() {
   }, [gameLoop]);
 
   useEffect(() => {
-    if (gameState === 'idle') {
-      startGame();
-    }
+    // Game no longer starts automatically.
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [startGame, gameState]);
+  }, []);
 
   const stopTimer = useCallback(async () => {
     if (gameState !== 'playing') return;
@@ -125,8 +125,10 @@ export default function Home() {
       setIsAiGenerating(false);
     }
 
-    timeoutRef.current = setTimeout(startGame, 2500);
-  }, [gameState, displayedTime, startGame, toast]);
+    timeoutRef.current = setTimeout(() => {
+      setGameState('idle');
+    }, 2500);
+  }, [gameState, displayedTime, toast]);
 
   const isPerfect = result.aiResponse?.message === 'PERFECT';
 
@@ -151,20 +153,45 @@ export default function Home() {
 
   return (
     <main
-      className="flex h-dvh w-full cursor-pointer flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#05040b] to-[#0b0614] text-white selection:bg-purple-500/30"
-      onClick={stopTimer}
+      className={cn(
+        'flex h-dvh w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#05040b] to-[#0b0614] text-white selection:bg-purple-500/30',
+        gameState === 'playing' && 'cursor-pointer'
+      )}
+      onClick={gameState === 'playing' ? stopTimer : undefined}
     >
-      {gameState !== 'stopped' ? (
+      {gameState === 'idle' && (
+        <div className="flex flex-col items-center justify-center p-4 text-center animate-in fade-in-0 duration-500">
+          <h1 className="font-headline text-4xl uppercase tracking-[0.3em] text-white/80">
+            Everyone Fails at 17
+          </h1>
+          <p className="mt-4 max-w-md text-white/60">
+            Can you stop the timer at exactly 17.00 seconds? The timer might not
+            be as trustworthy as you think.
+          </p>
+          <div className="h-12" />
+          <Button
+            onClick={startGame}
+            size="lg"
+            className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
+          >
+            Start Game
+          </Button>
+        </div>
+      )}
+
+      {gameState === 'playing' && (
         <div className="flex flex-col items-center justify-center animate-in fade-in-0 duration-500">
           <p className="font-headline text-lg uppercase tracking-[0.3em] text-white/60">
-            Stop at 17
+            Click anywhere to stop
           </p>
           <div className="h-8" />
           <p className="font-body text-[clamp(6rem,25vw,9rem)] font-bold leading-none text-white drop-shadow-[0_0_15px_hsla(var(--primary),0.5)]">
             {displayedTime > 0 ? displayedTime.toFixed(2) : '0.00'}
           </p>
         </div>
-      ) : (
+      )}
+
+      {gameState === 'stopped' && (
         <div className="flex flex-col items-center justify-center px-4 text-center animate-in fade-in-0 duration-500">
           <p
             className={cn(
