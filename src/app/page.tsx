@@ -339,7 +339,7 @@ export default function Home() {
       >
         {gameState === 'idle' && (
           <div className="flex flex-col items-center justify-center text-center animate-in fade-in-0 duration-500">
-            <h1 className="font-headline text-4xl uppercase tracking-[0.3em] text-white/80">
+            <h1 className="font-headline text-3xl sm:text-4xl uppercase tracking-[0.3em] text-white/80">
               Everyone Fails at {TARGET_TIME}
             </h1>
             <p className="mt-4 max-w-md text-white/60">
@@ -349,7 +349,7 @@ export default function Home() {
             <Button
               onClick={startGame}
               size="lg"
-              className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
+              className="h-12 sm:h-14 rounded-full px-10 sm:px-12 font-headline text-xl sm:text-2xl uppercase tracking-widest transition-transform hover:scale-105"
               disabled={isUserLoading}
             >
               {isUserLoading ? 'Connecting...' : 'Start Game'}
@@ -395,14 +395,14 @@ export default function Home() {
                 <Button
                   onClick={startGame}
                   size="lg"
-                  className="h-14 rounded-full px-12 font-headline text-2xl uppercase tracking-widest transition-transform hover:scale-105"
+                  className="h-12 sm:h-14 rounded-full px-10 sm:px-12 font-headline text-xl sm:text-2xl uppercase tracking-widest transition-transform hover:scale-105"
                 >
                   Try Again
                 </Button>
 
                 {showNameInput && (
                   <div className="flex w-full flex-col items-center gap-2">
-                    <p className="font-headline text-lg uppercase tracking-widest text-white/80">
+                    <p className="font-headline text-base sm:text-lg uppercase tracking-widest text-white/80">
                       Add your name to the leaderboard!
                     </p>
                     <div className="flex w-full gap-2">
@@ -421,7 +421,7 @@ export default function Home() {
                 )}
 
                 <div className="w-full">
-                  <h2 className="font-headline text-xl uppercase tracking-[0.3em] text-white/60">
+                  <h2 className="font-headline text-lg sm:text-xl uppercase tracking-[0.3em] text-white/60">
                     Leaderboard
                   </h2>
                   <div className="h-4" />
@@ -453,7 +453,7 @@ export default function Home() {
                             <span className="truncate font-medium">
                               {score.userName}
                             </span>
-                            <span className="w-24 text-right text-sm text-white/50">
+                            <span className="w-20 sm:w-24 text-right text-sm text-white/50">
                               {score.stoppedTime > TARGET_TIME ? '+' : ''}
                               {(score.stoppedTime - TARGET_TIME).toFixed(3)}s
                             </span>
@@ -498,5 +498,3 @@ export default function Home() {
     </>
   );
 }
-
-    
