@@ -479,14 +479,11 @@ export default function Home() {
         <div className="mx-auto flex h-full max-w-5xl items-center justify-between px-4 text-sm text-white/50">
           <p>
             Made with ❤️ by{' '}
-            <a
-              href="https://x.com/iamdarkhax"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-white/80 hover:text-primary"
+            <span
+              className="font-medium text-white/80"
             >
               DarkHax
-            </a>
+            </span>
           </p>
           <a
             href="https://www.buymeacoffee.com/darkhax"
