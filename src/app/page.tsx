@@ -63,11 +63,11 @@ const TARGET_TIME = 17.0;
 function getFallbackMessage(delta: number): GenerateRageMessageOutput {
   const abs = Math.abs(delta);
 
-  const perfectMessages = ['PERFECT', 'FLAWLESS', 'IMPOSSIBLE', 'GODLIKE', 'LEGENDARY', 'MASTERFUL', 'UNTOUCHABLE'];
-  const closeMessages = ['SO CLOSE', 'ALMOST', 'NEARLY THERE', 'JUST A WHISKER AWAY', "A HAIR'S BREADTH", 'SO CLOSE YOU CAN TASTE IT', 'PRACTICALLY PERFECT', 'ALMOST A LEGEND'];
-  const earlyMessages = ['TOO EARLY', 'JUMPED THE GUN', 'A BIT EAGER', 'TOO SOON', 'EAGER BEAVER', 'PATIENCE IS A VIRTUE'];
-  const lateMessages = ['TOO LATE', 'A DAY LATE...', 'WERE YOU NAPPING?', 'A TAD SLOW', 'WERE YOU DAYDREAMING?', "SNAIL'S PACE"];
-  const farMessages = ['NOT EVEN CLOSE', 'ARE YOU EVEN TRYING?', 'MILES OFF', 'MY GRANDMA CAN DO BETTER', 'ARE YOU USING A SUNDIAL?', 'THAT WAS A CALENDAR, NOT A TIMER', 'DID YOU FORGET YOU WERE PLAYING?', 'MAYBE TRY OPENING YOUR EYES'];
+  const perfectMessages = ['PERFECT', 'FLAWLESS', 'IMPOSSIBLE', 'GODLIKE', 'LEGENDARY', 'MASTERFUL', 'UNTOUCHABLE', 'DIVINE', 'MYTHICAL', 'SUBLIME'];
+  const closeMessages = ['SO CLOSE', 'ALMOST', 'NEARLY THERE', 'JUST A WHISKER AWAY', "A HAIR'S BREADTH", 'SO CLOSE YOU CAN TASTE IT', 'PRACTICALLY PERFECT', 'ALMOST A LEGEND', 'INCHING CLOSER', 'SPLITTING HAIRS'];
+  const earlyMessages = ['TOO EARLY', 'JUMPED THE GUN', 'A BIT EAGER', 'TOO SOON', 'EAGER BEAVER', 'PATIENCE IS A VIRTUE', 'EARLY BIRD GETS THE WORM, BUT NOT THE WIN', 'AHEAD OF YOURSELF'];
+  const lateMessages = ['TOO LATE', 'A DAY LATE...', 'WERE YOU NAPPING?', 'A TAD SLOW', 'WERE YOU DAYDREAMING?', "SNAIL'S PACE", 'FASHIONABLY LATE', 'BETTER LATE THAN NEVER? NOT HERE.'];
+  const farMessages = ['NOT EVEN CLOSE', 'ARE YOU EVEN TRYING?', 'MILES OFF', 'MY GRANDMA CAN DO BETTER', 'ARE YOU USING A SUNDIAL?', 'THAT WAS A CALENDAR, NOT A TIMER', 'DID YOU FORGET YOU WERE PLAYING?', 'MAYBE TRY OPENING YOUR EYES', 'WAY OFF THE MARK', 'IN ANOTHER ZIP CODE', 'LOST IN SPACE', 'TAKE A MAP'];
   
   const secondaryTaunts = [
     'Everyone thinks they can do this.',
@@ -83,6 +83,11 @@ function getFallbackMessage(delta: number): GenerateRageMessageOutput {
     'Is it hard being that slow?',
     "Don't quit your day job.",
     'Blink twice if you need help.',
+    'That was... a choice.',
+    'Keep trying, champ.',
+    'Maybe this just isn\'t your game.',
+    'Have you considered a different hobby?',
+    'Was that a practice run?',
   ];
 
   const socialProofLines = [
@@ -95,6 +100,9 @@ function getFallbackMessage(delta: number): GenerateRageMessageOutput {
     'Top 1% of players are within 0.05s.',
     'Better luck next time... or the time after that.',
     'Some people are just born with it. You were not.',
+    'Thousands have failed before you. You\'re not special.',
+    'Do you feel the collective disappointment?',
+    'Welcome to the 99%.',
   ];
 
   let message = '';
@@ -336,9 +344,9 @@ export default function Home() {
     setDocumentNonBlocking(userDocRef, userUpdateData, { merge: true });
 
     // Add/Update score on global leaderboard
-    const currentUserName = userProfile?.displayName || userName || 'Anonymous';
+    const currentUserName = userProfile?.displayName || userName;
     if (isNewPersonalBest) {
-      if (currentUserName === 'Anonymous') {
+      if (!currentUserName) {
         setPendingLeaderboardUpdate(true);
       } else {
         const leaderboardDocRef = doc(firestore, 'leaderboard', user.uid);
@@ -438,7 +446,7 @@ export default function Home() {
         )}
 
         {gameState === 'playing' && (
-          <div className="flex flex-col items-center justify-center animate-in fade-in-0 duration-500">
+          <div className="flex flex-col items-center justify-center text-center animate-in fade-in-0 duration-500">
             <p className="font-headline text-lg uppercase tracking-[0.3em] text-white/60">
               Click anywhere to stop
             </p>
