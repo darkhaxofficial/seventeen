@@ -134,15 +134,15 @@ service cloud.firestore {
      * @description Provides public read access to the global leaderboard and allows authenticated users to submit/update their own best score.
      * @path /leaderboard/{userId}
      * @allow (get, list) Any client can read the leaderboard.
-     * @allow (create) An authenticated user 'user123' can create their own entry at `/leaderboard/user123`.
-     * @allow (update) A user can update their entry only if their new score (`deltaFromTarget`) is lower (better) than their previous score.
+     * @allow (write) An authenticated user 'user123' can create their own entry at `/leaderboard/user123` or update it only if their new score (`deltaFromTarget`) is lower (better) than their previous score.
      * @deny (delete) No client can delete leaderboard entries.
      * @principle Ensures each user has one entry and can only improve their score, not worsen it or edit others'.
      */
     match /leaderboard/{userId} {
       allow read, list: if true;
-      allow create: if isOwner(userId) && request.resource.data.userId == userId;
-      allow update: if isOwner(userId) && request.resource.data.deltaFromTarget < resource.data.deltaFromTarget;
+      allow write: if isOwner(userId) && 
+                      request.resource.data.userId == userId &&
+                      (resource == null || request.resource.data.deltaFromTarget < resource.data.deltaFromTarget);
       allow delete: if false;
     }
     
@@ -163,5 +163,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
