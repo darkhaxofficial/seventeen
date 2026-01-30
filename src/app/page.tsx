@@ -63,11 +63,11 @@ const TARGET_TIME = 17.0;
 function getFallbackMessage(delta: number): GenerateRageMessageOutput {
   const abs = Math.abs(delta);
 
-  const perfectMessages = ['PERFECT', 'FLAWLESS', 'IMPOSSIBLE', 'GODLIKE'];
-  const closeMessages = ['SO CLOSE', 'ALMOST', 'NEARLY THERE', 'JUST A WHISKER AWAY'];
-  const earlyMessages = ['TOO EARLY', 'JUMPED THE GUN', 'A BIT EAGER'];
-  const lateMessages = ['TOO LATE', 'A DAY LATE...', 'WERE YOU NAPPING?'];
-  const farMessages = ['NOT EVEN CLOSE', 'ARE YOU EVEN TRYING?', 'MILES OFF', 'MY GRANDMA CAN DO BETTER'];
+  const perfectMessages = ['PERFECT', 'FLAWLESS', 'IMPOSSIBLE', 'GODLIKE', 'LEGENDARY', 'MASTERFUL', 'UNTOUCHABLE'];
+  const closeMessages = ['SO CLOSE', 'ALMOST', 'NEARLY THERE', 'JUST A WHISKER AWAY', "A HAIR'S BREADTH", 'SO CLOSE YOU CAN TASTE IT', 'PRACTICALLY PERFECT', 'ALMOST A LEGEND'];
+  const earlyMessages = ['TOO EARLY', 'JUMPED THE GUN', 'A BIT EAGER', 'TOO SOON', 'EAGER BEAVER', 'PATIENCE IS A VIRTUE'];
+  const lateMessages = ['TOO LATE', 'A DAY LATE...', 'WERE YOU NAPPING?', 'A TAD SLOW', 'WERE YOU DAYDREAMING?', "SNAIL'S PACE"];
+  const farMessages = ['NOT EVEN CLOSE', 'ARE YOU EVEN TRYING?', 'MILES OFF', 'MY GRANDMA CAN DO BETTER', 'ARE YOU USING A SUNDIAL?', 'THAT WAS A CALENDAR, NOT A TIMER', 'DID YOU FORGET YOU WERE PLAYING?', 'MAYBE TRY OPENING YOUR EYES'];
   
   const secondaryTaunts = [
     'Everyone thinks they can do this.',
@@ -76,7 +76,13 @@ function getFallbackMessage(delta: number): GenerateRageMessageOutput {
     'Again. You’ll do better.',
     'Almost counts for nothing.',
     'Just a little bit off.',
-    'Try blinking less.'
+    'Try blinking less.',
+    'Even my cat can do better.',
+    'Was that your first time using a computer?',
+    'You are the reason they put instructions on shampoo.',
+    'Is it hard being that slow?',
+    "Don't quit your day job.",
+    'Blink twice if you need help.',
   ];
 
   const socialProofLines = [
@@ -84,7 +90,11 @@ function getFallbackMessage(delta: number): GenerateRageMessageOutput {
     'Most people click too early.',
     '93% fail between 16.5–17.5.',
     'Only 1% of players get within 0.1s.',
-    'The average miss is over a second.'
+    'The average miss is over a second.',
+    'The world record is 0.001s. You are not the world record holder.',
+    'Top 1% of players are within 0.05s.',
+    'Better luck next time... or the time after that.',
+    'Some people are just born with it. You were not.',
   ];
 
   let message = '';
@@ -358,17 +368,13 @@ export default function Home() {
       }
       setResult({ finalTime, delta, aiResponse });
     } catch (e) {
-      // toast({
-      //   variant: 'destructive',
-      //   title: 'Connection Error',
-      //   description: 'Could not generate a custom message.',
-      // });
+      // Intentionally not showing a toast here.
       const fallbackResponse = getFallbackMessage(delta);
       setResult({ finalTime, delta, aiResponse: fallbackResponse });
     } finally {
       setIsAiGenerating(false);
     }
-  }, [gameState, user, firestore, userProfile, userName, isPendingLeaderboardUpdate, lastAttempt]);
+  }, [gameState, user, firestore, userProfile, userName]);
 
   const renderResultText = () => {
     if (!result.aiResponse) return null;
