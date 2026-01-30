@@ -15,7 +15,7 @@
  * - Strict Ownership: All operations within a user's data tree (`/users/{userId}`) require the request's
  *   authentication UID to match the `{userId}` in the path.
  * - Public Leaderboard with Secure Writes: The `/leaderboard` collection is publicly readable so all players can see top scores.
- *   However, `create` operations are restricted, allowing users to only submit scores linked to their own UID. Updates and deletes are disallowed.
+ *   However, writes are restricted, allowing users to only submit/update scores linked to their own UID, and only if the new score is an improvement.
  * - Read-Only Global Data: The `/global_statistics` document is publicly readable but cannot be modified by
  *   any client. This prevents data tampering and ensures that updates are only performed by a trusted
  *   server-side process (e.g., a Cloud Function).
@@ -131,17 +131,19 @@ service cloud.firestore {
     }
 
     /**
-     * @description Provides public read access to the global leaderboard and allows authenticated users to submit their own scores.
-     * @path /leaderboard/{entryId}
+     * @description Provides public read access to the global leaderboard and allows authenticated users to submit/update their own best score.
+     * @path /leaderboard/{userId}
      * @allow (get, list) Any client can read the leaderboard.
-     * @allow (create) An authenticated user 'user123' can create a new entry if the `userId` in the document matches their own UID.
-     * @deny (update, delete) No client can modify or delete leaderboard entries.
-     * @principle Separates public game data from private user data and secures write access based on user identity.
+     * @allow (create) An authenticated user 'user123' can create their own entry at `/leaderboard/user123`.
+     * @allow (update) A user can update their entry only if their new score (`deltaFromTarget`) is lower (better) than their previous score.
+     * @deny (delete) No client can delete leaderboard entries.
+     * @principle Ensures each user has one entry and can only improve their score, not worsen it or edit others'.
      */
-    match /leaderboard/{entryId} {
-      allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if false;
+    match /leaderboard/{userId} {
+      allow read, list: if true;
+      allow create: if isOwner(userId) && request.resource.data.userId == userId;
+      allow update: if isOwner(userId) && request.resource.data.deltaFromTarget < resource.data.deltaFromTarget;
+      allow delete: if false;
     }
     
     /**
@@ -161,3 +163,5 @@ service cloud.firestore {
     }
   }
 }
+
+    

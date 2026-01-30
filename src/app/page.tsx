@@ -230,7 +230,7 @@ export default function Home() {
     const absDelta = Math.abs(delta);
 
     // --- Firestore Logic ---
-    const newAttempt: Attempt = {
+    const newAttempt: Omit<Attempt, 'id'> = {
       userId: user.uid,
       stoppedTime: finalTime,
       deltaFromTarget: absDelta,
@@ -261,18 +261,20 @@ export default function Home() {
     };
     setDocumentNonBlocking(userDocRef, userUpdateData, { merge: true });
 
-    // Add to global leaderboard
+    // Add/Update score on global leaderboard
     const currentUserName = userProfile?.displayName || userName || 'Anonymous';
     if (currentUserName !== 'Anonymous') {
-      const leaderboardColRef = collection(firestore, 'leaderboard');
-      const newLeaderboardEntry: Omit<LeaderboardEntry, 'id'> = {
+      const leaderboardDocRef = doc(firestore, 'leaderboard', user.uid);
+      const newLeaderboardEntry: LeaderboardEntry = {
         userId: user.uid,
         userName: currentUserName,
         stoppedTime: finalTime,
         deltaFromTarget: absDelta,
         timestamp: new Date().toISOString(),
       };
-      addDocumentNonBlocking(leaderboardColRef, newLeaderboardEntry);
+      // This will create or overwrite the user's leaderboard entry.
+      // The security rules will reject the write if the score is not an improvement.
+      setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, {});
     }
     // --- End Firestore Logic ---
 
@@ -496,3 +498,5 @@ export default function Home() {
     </>
   );
 }
+
+    
