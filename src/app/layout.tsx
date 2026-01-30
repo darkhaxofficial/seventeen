@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 import { FirebaseClientProvider } from '@/firebase';
 
 export const metadata: Metadata = {
-  title: 'Eighteen',
-  description: 'Everyone Fails at 18',
+  title: 'Seventeen',
+  description: 'Everyone Fails at 17',
 };
 
 export default function RootLayout({

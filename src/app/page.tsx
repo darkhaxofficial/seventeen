@@ -57,7 +57,7 @@ type LeaderboardEntry = {
   timestamp: string;
 };
 
-const TARGET_TIME = 18.0;
+const TARGET_TIME = 17.0;
 
 // Fallback message generator if AI fails
 function getFallbackMessage(delta: number): GenerateRageMessageOutput {
