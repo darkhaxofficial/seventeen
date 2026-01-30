@@ -288,7 +288,6 @@ export default function Home() {
       });
       setResult({ finalTime, delta, aiResponse });
     } catch (e) {
-      console.error('AI generation failed', e);
       toast({
         variant: 'destructive',
         title: 'Connection Error',
