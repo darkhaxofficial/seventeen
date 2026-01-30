@@ -457,9 +457,8 @@ export default function Home() {
                             <span className="truncate font-medium">
                               {score.userName}
                             </span>
-                            <span className="w-20 sm:w-24 text-right text-sm text-white/50">
-                              {score.stoppedTime > TARGET_TIME ? '+' : ''}
-                              {(score.stoppedTime - TARGET_TIME).toFixed(3)}s
+                            <span className="w-20 sm:w-24 text-right font-mono text-sm text-white/50">
+                              +{score.deltaFromTarget.toFixed(3)}s
                             </span>
                           </li>
                         ))}
