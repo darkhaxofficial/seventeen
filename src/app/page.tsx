@@ -57,6 +57,8 @@ type LeaderboardEntry = {
   timestamp: string;
 };
 
+const TARGET_TIME = 18.0;
+
 // Fallback message generator if AI fails
 function getFallbackMessage(delta: number): GenerateRageMessageOutput {
   const abs = Math.abs(delta);
@@ -70,7 +72,9 @@ function getFallbackMessage(delta: number): GenerateRageMessageOutput {
   if (message === 'PERFECT') {
     socialProofLine = 'You are in the top 0.01%';
   } else if (abs < 0.5) {
-    socialProofLine = '93% fail between 16.5–17.5';
+    socialProofLine = `93% fail between ${TARGET_TIME - 0.5}–${
+      TARGET_TIME + 0.5
+    }`;
   }
 
   return {
@@ -142,6 +146,10 @@ export default function Home() {
     if (t > 10) {
       speed += (t - 10) * 0.015;
     }
+    // Make it harder to hit the target.
+    if (t > TARGET_TIME - 3) {
+      speed += (Math.random() - 0.5) * 0.05;
+    }
     const jitter = Math.random() < 0.02 ? Math.random() * 0.03 : 0;
     const skip = Math.random() < 0.005 ? 0.05 : 0;
     return t * speed + jitter + skip;
@@ -184,9 +192,16 @@ export default function Home() {
       return;
     }
     const userDocRef = doc(firestore, 'users', user.uid);
-    setDocumentNonBlocking(userDocRef, { displayName: userName.trim() }, { merge: true });
+    setDocumentNonBlocking(
+      userDocRef,
+      { displayName: userName.trim() },
+      { merge: true }
+    );
     setShowNameInput(false);
-    toast({ title: 'Name Saved!', description: 'Your name will now appear on the leaderboard.' });
+    toast({
+      title: 'Name Saved!',
+      description: 'Your name will now appear on the leaderboard.',
+    });
   }, [user, userName, firestore, toast]);
 
   const stopTimer = useCallback(async () => {
@@ -198,7 +213,7 @@ export default function Home() {
     setGameState('stopped');
 
     const finalTime = displayedTime;
-    const delta = finalTime - 17;
+    const delta = finalTime - TARGET_TIME;
     const absDelta = Math.abs(delta);
 
     // --- Firestore Logic ---
@@ -210,7 +225,12 @@ export default function Home() {
       deviceType: 'desktop', // This could be dynamic
     };
 
-    const attemptsColRef = collection(firestore, 'users', user.uid, 'attempts');
+    const attemptsColRef = collection(
+      firestore,
+      'users',
+      user.uid,
+      'attempts'
+    );
     addDocumentNonBlocking(attemptsColRef, newAttempt);
 
     const userDocRef = doc(firestore, 'users', user.uid);
@@ -263,7 +283,15 @@ export default function Home() {
     } finally {
       setIsAiGenerating(false);
     }
-  }, [gameState, displayedTime, toast, user, firestore, userProfile, userName]);
+  }, [
+    gameState,
+    displayedTime,
+    toast,
+    user,
+    firestore,
+    userProfile,
+    userName,
+  ]);
 
   const isPerfect = result.aiResponse?.message === 'PERFECT';
 
@@ -305,11 +333,11 @@ export default function Home() {
         {gameState === 'idle' && (
           <div className="flex flex-col items-center justify-center text-center animate-in fade-in-0 duration-500">
             <h1 className="font-headline text-4xl uppercase tracking-[0.3em] text-white/80">
-              Everyone Fails at 17
+              Everyone Fails at {TARGET_TIME}
             </h1>
             <p className="mt-4 max-w-md text-white/60">
-              Can you stop the timer at exactly 17.00 seconds? The timer might
-              not be as trustworthy as you think.
+              Can you stop the timer at exactly {TARGET_TIME.toFixed(2)} seconds?
+              The timer might not be as trustworthy as you think.
             </p>
             <div className="h-12" />
             <Button
@@ -377,7 +405,9 @@ export default function Home() {
                         onChange={(e) => setUserName(e.target.value)}
                         placeholder="Enter your name"
                         className="text-center"
-                        onKeyDown={(e) => e.key === 'Enter' && handleNameSubmit()}
+                        onKeyDown={(e) =>
+                          e.key === 'Enter' && handleNameSubmit()
+                        }
                       />
                       <Button onClick={handleNameSubmit}>Save</Button>
                     </div>
@@ -403,18 +433,23 @@ export default function Home() {
                           <li
                             key={score.id}
                             className={cn(
-                              "flex items-center justify-between rounded-md bg-white/5 p-3 font-body",
-                              user?.uid === score.userId && 'ring-2 ring-primary'
+                              'flex items-center justify-between rounded-md bg-white/5 p-3 font-body',
+                              user?.uid === score.userId &&
+                                'ring-2 ring-primary'
                             )}
                           >
                             <span className="w-8 font-bold text-white/60 flex items-center gap-2">
-                              {index === 0 && <Crown className="w-4 h-4 text-yellow-400" />}
+                              {index === 0 && (
+                                <Crown className="w-4 h-4 text-yellow-400" />
+                              )}
                               {index > 0 && `#${index + 1}`}
                             </span>
-                             <span className="truncate font-medium">{score.userName}</span>
+                            <span className="truncate font-medium">
+                              {score.userName}
+                            </span>
                             <span className="w-24 text-right text-sm text-white/50">
-                              {score.stoppedTime > 17 ? '+' : ''}
-                              {(score.stoppedTime - 17).toFixed(3)}s
+                              {score.stoppedTime > TARGET_TIME ? '+' : ''}
+                              {(score.stoppedTime - TARGET_TIME).toFixed(3)}s
                             </span>
                           </li>
                         ))}
