@@ -123,6 +123,7 @@ export default function Home() {
 
   const requestRef = useRef<number>();
   const startTimeRef = useRef<number | null>(null);
+  const displayedTimeRef = useRef(0);
 
   useEffect(() => {
     if (auth && !user && !isUserLoading) {
@@ -141,17 +142,47 @@ export default function Home() {
     }
   }, [userProfile]);
 
-  const gameLoop = useCallback((now: number) => {
-    if (startTimeRef.current === null) {
-      startTimeRef.current = now;
+  const autoStopTimer = useCallback(() => {
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
     }
-    const elapsed = (now - startTimeRef.current) / 1000;
-    setDisplayedTime(elapsed);
-    requestRef.current = requestAnimationFrame(gameLoop);
+    setGameState('stopped');
+    setIsAiGenerating(false);
+
+    const finalTime = 18.0;
+    const delta = finalTime - TARGET_TIME;
+
+    setResult({
+      finalTime,
+      delta,
+      aiResponse: {
+        message: "YOU DIDN'T EVEN TRY",
+        secondaryTaunt: 'The timer ran out at 18 seconds.',
+        socialProofLine: 'You have to actually click to play.',
+      },
+    });
   }, []);
+
+  const gameLoop = useCallback(
+    (now: number) => {
+      if (startTimeRef.current === null) {
+        startTimeRef.current = now;
+      }
+      const elapsed = (now - startTimeRef.current) / 1000;
+      if (elapsed >= 18.0) {
+        autoStopTimer();
+        return;
+      }
+      setDisplayedTime(elapsed);
+      displayedTimeRef.current = elapsed;
+      requestRef.current = requestAnimationFrame(gameLoop);
+    },
+    [autoStopTimer]
+  );
 
   const startGame = useCallback(() => {
     setDisplayedTime(0);
+    displayedTimeRef.current = 0;
     setResult({ finalTime: 0, delta: 0, aiResponse: null });
     setGameState('playing');
     startTimeRef.current = null;
@@ -194,7 +225,7 @@ export default function Home() {
     }
     setGameState('stopped');
 
-    const finalTime = displayedTime;
+    const finalTime = displayedTimeRef.current;
     const delta = finalTime - TARGET_TIME;
     const absDelta = Math.abs(delta);
 
@@ -265,15 +296,7 @@ export default function Home() {
     } finally {
       setIsAiGenerating(false);
     }
-  }, [
-    gameState,
-    displayedTime,
-    toast,
-    user,
-    firestore,
-    userProfile,
-    userName,
-  ]);
+  }, [gameState, toast, user, firestore, userProfile, userName]);
 
   const isPerfect = result.aiResponse?.message === 'PERFECT';
 
