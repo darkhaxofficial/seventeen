@@ -139,7 +139,7 @@ service cloud.firestore {
      * @principle Separates public game data from private user data and secures write access based on user identity.
      */
     match /leaderboard/{entryId} {
-      allow get, list: if true;
+      allow read: if true;
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if false;
     }
