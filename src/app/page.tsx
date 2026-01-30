@@ -423,7 +423,7 @@ export default function Home() {
 
                 <div className="w-full">
                   <h2 className="font-headline text-lg sm:text-xl uppercase tracking-[0.3em] text-white/60">
-                    Top 10 Players
+                    TOP OF THE LEADER BOARD
                   </h2>
                   <div className="h-4" />
                   {isLeaderboardLoading && (
@@ -436,6 +436,10 @@ export default function Home() {
                   {!isLeaderboardLoading &&
                     (leaderboardScores && leaderboardScores.length > 0 ? (
                       <>
+                        <p className="mb-4 text-center font-headline text-sm uppercase tracking-widest text-white/60">
+                          Beat {leaderboardScores[0].userName} and be the next
+                          top one
+                        </p>
                         <ol className="space-y-2 text-white/80">
                           {leaderboardScores.map((score, index) => (
                             <li
@@ -461,10 +465,6 @@ export default function Home() {
                             </li>
                           ))}
                         </ol>
-                        <p className="mt-4 text-center font-headline text-sm uppercase tracking-widest text-white/60">
-                          Beat {leaderboardScores[0].userName} and be the next
-                          top one
-                        </p>
                       </>
                     ) : (
                       <p className="text-white/50">
