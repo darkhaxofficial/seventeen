@@ -326,7 +326,7 @@ export default function Home() {
     } finally {
       setIsAiGenerating(false);
     }
-  }, [gameState, toast, user, firestore, userProfile, userName]);
+  }, [gameState, user, firestore, userProfile, userName]);
 
   const isPerfect = result.aiResponse?.message === 'PERFECT';
 
