@@ -275,9 +275,6 @@ export default function Home() {
         deltaFromTarget: absDelta,
         timestamp: new Date().toISOString(),
       };
-      // This will create or overwrite the user's leaderboard entry.
-      // The security rules will reject the write if the score is not an improvement,
-      // but this client-side check prevents the unnecessary attempt.
       setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, { merge: true });
     }
     // --- End Firestore Logic ---
@@ -426,7 +423,7 @@ export default function Home() {
 
                 <div className="w-full">
                   <h2 className="font-headline text-lg sm:text-xl uppercase tracking-[0.3em] text-white/60">
-                    Leaderboard
+                    Top 10 Players
                   </h2>
                   <div className="h-4" />
                   {isLeaderboardLoading && (
@@ -438,31 +435,37 @@ export default function Home() {
                   )}
                   {!isLeaderboardLoading &&
                     (leaderboardScores && leaderboardScores.length > 0 ? (
-                      <ol className="space-y-2 text-white/80">
-                        {leaderboardScores.map((score, index) => (
-                          <li
-                            key={score.id}
-                            className={cn(
-                              'flex items-center justify-between rounded-md bg-white/5 p-3 font-body',
-                              user?.uid === score.userId &&
-                                'ring-2 ring-primary'
-                            )}
-                          >
-                            <span className="w-8 font-bold text-white/60 flex items-center gap-2">
-                              {index === 0 && (
-                                <Crown className="w-4 h-4 text-yellow-400" />
+                      <>
+                        <ol className="space-y-2 text-white/80">
+                          {leaderboardScores.map((score, index) => (
+                            <li
+                              key={score.id}
+                              className={cn(
+                                'flex items-center justify-between rounded-md bg-white/5 p-3 font-body',
+                                user?.uid === score.userId &&
+                                  'ring-2 ring-primary'
                               )}
-                              {index > 0 && `#${index + 1}`}
-                            </span>
-                            <span className="truncate font-medium">
-                              {score.userName}
-                            </span>
-                            <span className="w-20 sm:w-24 text-right font-mono text-sm text-white/50">
-                              +{score.deltaFromTarget.toFixed(3)}s
-                            </span>
-                          </li>
-                        ))}
-                      </ol>
+                            >
+                              <span className="w-8 font-bold text-white/60 flex items-center gap-2">
+                                {index === 0 && (
+                                  <Crown className="w-4 h-4 text-yellow-400" />
+                                )}
+                                {index > 0 && `#${index + 1}`}
+                              </span>
+                              <span className="truncate font-medium">
+                                {score.userName}
+                              </span>
+                              <span className="w-20 sm:w-24 text-right font-mono text-sm text-white/50">
+                                +{score.deltaFromTarget.toFixed(3)}s
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                        <p className="mt-4 text-center font-headline text-sm uppercase tracking-widest text-white/60">
+                          Beat {leaderboardScores[0].userName} and be the next
+                          top one
+                        </p>
+                      </>
                     ) : (
                       <p className="text-white/50">
                         The leaderboard is empty. Be the first!
