@@ -423,7 +423,7 @@ export default function Home() {
 
                 <div className="w-full">
                   <h2 className="font-headline text-lg sm:text-xl uppercase tracking-[0.3em] text-white/60">
-                    TOP OF THE LEADER BOARD
+                    TOP 10 Players
                   </h2>
                   <div className="h-4" />
                   {isLeaderboardLoading && (
