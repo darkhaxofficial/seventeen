@@ -98,6 +98,11 @@ export default function Home() {
   const [userName, setUserName] = useState('');
   const [showNameInput, setShowNameInput] = useState(false);
 
+  const [lastAttempt, setLastAttempt] =
+    useState<Omit<Attempt, 'id' | 'userId' | 'deviceType'> | null>(null);
+  const [isPendingLeaderboardUpdate, setPendingLeaderboardUpdate] =
+    useState(false);
+
   const { auth, firestore } = useFirebase();
   const { user, isUserLoading } = useUser();
 
@@ -187,6 +192,7 @@ export default function Home() {
     setGameState('playing');
     startTimeRef.current = null;
     requestRef.current = requestAnimationFrame(gameLoop);
+    setPendingLeaderboardUpdate(false);
   }, [gameLoop]);
 
   useEffect(() => {
@@ -205,9 +211,11 @@ export default function Home() {
       return;
     }
     const userDocRef = doc(firestore, 'users', user.uid);
+    const trimmedUserName = userName.trim();
+
     setDocumentNonBlocking(
       userDocRef,
-      { displayName: userName.trim() },
+      { displayName: trimmedUserName },
       { merge: true }
     );
     setShowNameInput(false);
@@ -215,7 +223,22 @@ export default function Home() {
       title: 'Name Saved!',
       description: 'Your name will now appear on the leaderboard.',
     });
-  }, [user, userName, firestore, toast]);
+
+    if (isPendingLeaderboardUpdate && lastAttempt) {
+      const leaderboardDocRef = doc(firestore, 'leaderboard', user.uid);
+      const newLeaderboardEntry: LeaderboardEntry = {
+        userId: user.uid,
+        userName: trimmedUserName,
+        stoppedTime: lastAttempt.stoppedTime,
+        deltaFromTarget: lastAttempt.deltaFromTarget,
+        timestamp: lastAttempt.timestamp,
+      };
+      setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, {
+        merge: true,
+      });
+      setPendingLeaderboardUpdate(false);
+    }
+  }, [user, userName, firestore, toast, isPendingLeaderboardUpdate, lastAttempt]);
 
   const stopTimer = useCallback(async () => {
     if (gameState !== 'playing' || !user) return;
@@ -233,13 +256,19 @@ export default function Home() {
     const oldPersonalBest = userProfile?.personalBestAccuracy ?? Infinity;
     const isNewPersonalBest = absDelta < oldPersonalBest;
 
-    const newAttempt: Omit<Attempt, 'id'> = {
-      userId: user.uid,
+    const newAttemptData = {
       stoppedTime: finalTime,
       deltaFromTarget: absDelta,
       timestamp: new Date().toISOString(),
+    };
+
+    const newAttempt: Omit<Attempt, 'id'> = {
+      ...newAttemptData,
+      userId: user.uid,
       deviceType: 'desktop', // This could be dynamic
     };
+
+    setLastAttempt(newAttemptData);
 
     const attemptsColRef = collection(
       firestore,
@@ -266,7 +295,9 @@ export default function Home() {
 
     // Add/Update score on global leaderboard
     const currentUserName = userProfile?.displayName || userName || 'Anonymous';
-    if (currentUserName !== 'Anonymous' && isNewPersonalBest) {
+    if (currentUserName === 'Anonymous' && isNewPersonalBest) {
+      setPendingLeaderboardUpdate(true);
+    } else if (currentUserName !== 'Anonymous' && isNewPersonalBest) {
       const leaderboardDocRef = doc(firestore, 'leaderboard', user.uid);
       const newLeaderboardEntry: LeaderboardEntry = {
         userId: user.uid,
@@ -275,7 +306,9 @@ export default function Home() {
         deltaFromTarget: absDelta,
         timestamp: new Date().toISOString(),
       };
-      setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, { merge: true });
+      setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, {
+        merge: true,
+      });
     }
     // --- End Firestore Logic ---
 
@@ -288,11 +321,6 @@ export default function Home() {
       });
       setResult({ finalTime, delta, aiResponse });
     } catch (e) {
-      toast({
-        variant: 'destructive',
-        title: 'Connection Error',
-        description: "Couldn't generate a custom message. Using a fallback.",
-      });
       const fallbackResponse = getFallbackMessage(delta);
       setResult({ finalTime, delta, aiResponse: fallbackResponse });
     } finally {
@@ -343,7 +371,8 @@ export default function Home() {
               Everyone Fails at {TARGET_TIME}
             </h1>
             <p className="mt-4 max-w-md text-white/60">
-              Can you stop the timer at exactly {TARGET_TIME.toFixed(2)} seconds?
+              Can you stop the timer at exactly {TARGET_TIME.toFixed(2)}{' '}
+              seconds?
             </p>
             <div className="h-12" />
             <Button
@@ -480,11 +509,7 @@ export default function Home() {
         <div className="mx-auto flex h-full max-w-5xl items-center justify-between px-4 text-sm text-white/50">
           <p>
             Made with ❤️ by{' '}
-            <span
-              className="font-medium text-white/80"
-            >
-              DarkHax
-            </span>
+            <span className="font-medium text-white/80">DarkHax</span>
           </p>
           <a
             href="https://www.buymeacoffee.com/darkhax"
