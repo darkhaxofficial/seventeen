@@ -141,32 +141,14 @@ export default function Home() {
     }
   }, [userProfile]);
 
-  const manipulateTime = useCallback((t: number): number => {
-    let speed = 1;
-    if (t > 10) {
-      speed += (t - 10) * 0.015;
+  const gameLoop = useCallback((now: number) => {
+    if (startTimeRef.current === null) {
+      startTimeRef.current = now;
     }
-    // Make it harder to hit the target.
-    if (t > TARGET_TIME - 3) {
-      speed += (Math.random() - 0.5) * 0.05;
-    }
-    const jitter = Math.random() < 0.02 ? Math.random() * 0.03 : 0;
-    const skip = Math.random() < 0.005 ? 0.05 : 0;
-    return t * speed + jitter + skip;
+    const elapsed = (now - startTimeRef.current) / 1000;
+    setDisplayedTime(elapsed);
+    requestRef.current = requestAnimationFrame(gameLoop);
   }, []);
-
-  const gameLoop = useCallback(
-    (now: number) => {
-      if (startTimeRef.current === null) {
-        startTimeRef.current = now;
-      }
-      const elapsed = (now - startTimeRef.current) / 1000;
-      const manipulated = manipulateTime(elapsed);
-      setDisplayedTime(manipulated);
-      requestRef.current = requestAnimationFrame(gameLoop);
-    },
-    [manipulateTime]
-  );
 
   const startGame = useCallback(() => {
     setDisplayedTime(0);
@@ -337,7 +319,6 @@ export default function Home() {
             </h1>
             <p className="mt-4 max-w-md text-white/60">
               Can you stop the timer at exactly {TARGET_TIME.toFixed(2)} seconds?
-              The timer might not be as trustworthy as you think.
             </p>
             <div className="h-12" />
             <Button
