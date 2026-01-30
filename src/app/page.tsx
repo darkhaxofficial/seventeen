@@ -230,6 +230,9 @@ export default function Home() {
     const absDelta = Math.abs(delta);
 
     // --- Firestore Logic ---
+    const oldPersonalBest = userProfile?.personalBestAccuracy ?? Infinity;
+    const isNewPersonalBest = absDelta < oldPersonalBest;
+
     const newAttempt: Omit<Attempt, 'id'> = {
       userId: user.uid,
       stoppedTime: finalTime,
@@ -248,7 +251,7 @@ export default function Home() {
 
     const userDocRef = doc(firestore, 'users', user.uid);
     const newTotalAttempts = (userProfile?.totalAttempts || 0) + 1;
-    const newPersonalBest = Math.min(
+    const newPersonalBestValue = Math.min(
       userProfile?.personalBestAccuracy ?? Infinity,
       absDelta
     );
@@ -257,13 +260,13 @@ export default function Home() {
       id: user.uid, // Required by security rules on create
       totalAttempts: newTotalAttempts,
       lastPlayedTime: new Date().toISOString(),
-      personalBestAccuracy: newPersonalBest,
+      personalBestAccuracy: newPersonalBestValue,
     };
     setDocumentNonBlocking(userDocRef, userUpdateData, { merge: true });
 
     // Add/Update score on global leaderboard
     const currentUserName = userProfile?.displayName || userName || 'Anonymous';
-    if (currentUserName !== 'Anonymous') {
+    if (currentUserName !== 'Anonymous' && isNewPersonalBest) {
       const leaderboardDocRef = doc(firestore, 'leaderboard', user.uid);
       const newLeaderboardEntry: LeaderboardEntry = {
         userId: user.uid,
@@ -273,8 +276,9 @@ export default function Home() {
         timestamp: new Date().toISOString(),
       };
       // This will create or overwrite the user's leaderboard entry.
-      // The security rules will reject the write if the score is not an improvement.
-      setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, {});
+      // The security rules will reject the write if the score is not an improvement,
+      // but this client-side check prevents the unnecessary attempt.
+      setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, { merge: true });
     }
     // --- End Firestore Logic ---
 
