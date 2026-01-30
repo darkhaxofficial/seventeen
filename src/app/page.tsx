@@ -62,24 +62,54 @@ const TARGET_TIME = 17.0;
 // Fallback message generator if AI fails
 function getFallbackMessage(delta: number): GenerateRageMessageOutput {
   const abs = Math.abs(delta);
-  let message = 'NOT EVEN CLOSE';
-  if (abs < 0.02) message = 'PERFECT';
-  else if (abs < 0.1) message = 'SO CLOSE';
-  else if (abs < 0.3) message = delta > 0 ? 'TOO LATE' : 'TOO EARLY';
-  else if (abs < 0.6) message = 'ALMOST';
 
-  let socialProofLine = 'Most people struggle with timing.';
-  if (message === 'PERFECT') {
+  const perfectMessages = ['PERFECT', 'FLAWLESS', 'IMPOSSIBLE', 'GODLIKE'];
+  const closeMessages = ['SO CLOSE', 'ALMOST', 'NEARLY THERE', 'JUST A WHISKER AWAY'];
+  const earlyMessages = ['TOO EARLY', 'JUMPED THE GUN', 'A BIT EAGER'];
+  const lateMessages = ['TOO LATE', 'A DAY LATE...', 'WERE YOU NAPPING?'];
+  const farMessages = ['NOT EVEN CLOSE', 'ARE YOU EVEN TRYING?', 'MILES OFF', 'MY GRANDMA CAN DO BETTER'];
+  
+  const secondaryTaunts = [
+    'Everyone thinks they can do this.',
+    'You trusted the timer.',
+    'Your brain lied to you.',
+    'Again. You’ll do better.',
+    'Almost counts for nothing.',
+    'Just a little bit off.',
+    'Try blinking less.'
+  ];
+
+  const socialProofLines = [
+    'Most people click too late.',
+    'Most people click too early.',
+    '93% fail between 16.5–17.5.',
+    'Only 1% of players get within 0.1s.',
+    'The average miss is over a second.'
+  ];
+
+  let message = '';
+  let secondaryTaunt = secondaryTaunts[Math.floor(Math.random() * secondaryTaunts.length)];
+  let socialProofLine = socialProofLines[Math.floor(Math.random() * socialProofLines.length)];
+
+  if (abs < 0.02) {
+    message = perfectMessages[Math.floor(Math.random() * perfectMessages.length)];
     socialProofLine = 'You are in the top 0.01%';
+    secondaryTaunt = 'You have ascended.';
+  } else if (abs < 0.1) {
+    message = closeMessages[Math.floor(Math.random() * closeMessages.length)];
   } else if (abs < 0.5) {
-    socialProofLine = `93% fail between ${TARGET_TIME - 0.5}–${
-      TARGET_TIME + 0.5
-    }`;
+    if (delta > 0) {
+      message = lateMessages[Math.floor(Math.random() * lateMessages.length)];
+    } else {
+      message = earlyMessages[Math.floor(Math.random() * earlyMessages.length)];
+    }
+  } else {
+    message = farMessages[Math.floor(Math.random() * farMessages.length)];
   }
 
   return {
     message,
-    secondaryTaunt: '',
+    secondaryTaunt,
     socialProofLine,
   };
 }
@@ -129,6 +159,8 @@ export default function Home() {
   const requestRef = useRef<number>();
   const startTimeRef = useRef<number | null>(null);
   const displayedTimeRef = useRef(0);
+  
+  const isPerfect = gameState === 'stopped' && Math.abs(result.delta) < 0.02;
 
   useEffect(() => {
     if (auth && !user && !isUserLoading) {
@@ -295,20 +327,22 @@ export default function Home() {
 
     // Add/Update score on global leaderboard
     const currentUserName = userProfile?.displayName || userName || 'Anonymous';
-    if (currentUserName === 'Anonymous' && isNewPersonalBest) {
-      setPendingLeaderboardUpdate(true);
-    } else if (currentUserName !== 'Anonymous' && isNewPersonalBest) {
-      const leaderboardDocRef = doc(firestore, 'leaderboard', user.uid);
-      const newLeaderboardEntry: LeaderboardEntry = {
-        userId: user.uid,
-        userName: currentUserName,
-        stoppedTime: finalTime,
-        deltaFromTarget: absDelta,
-        timestamp: new Date().toISOString(),
-      };
-      setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, {
-        merge: true,
-      });
+    if (isNewPersonalBest) {
+      if (currentUserName === 'Anonymous') {
+        setPendingLeaderboardUpdate(true);
+      } else {
+        const leaderboardDocRef = doc(firestore, 'leaderboard', user.uid);
+        const newLeaderboardEntry: LeaderboardEntry = {
+          userId: user.uid,
+          userName: currentUserName,
+          stoppedTime: finalTime,
+          deltaFromTarget: absDelta,
+          timestamp: new Date().toISOString(),
+        };
+        setDocumentNonBlocking(leaderboardDocRef, newLeaderboardEntry, {
+          merge: true,
+        });
+      }
     }
     // --- End Firestore Logic ---
 
@@ -319,25 +353,36 @@ export default function Home() {
       const aiResponse = await generateRageMessage({
         delta: parseFloat(delta.toFixed(4)),
       });
+      if (!aiResponse.message) {
+        throw new Error('AI response was empty.');
+      }
       setResult({ finalTime, delta, aiResponse });
     } catch (e) {
+      // toast({
+      //   variant: 'destructive',
+      //   title: 'Connection Error',
+      //   description: 'Could not generate a custom message.',
+      // });
       const fallbackResponse = getFallbackMessage(delta);
       setResult({ finalTime, delta, aiResponse: fallbackResponse });
     } finally {
       setIsAiGenerating(false);
     }
-  }, [gameState, user, firestore, userProfile, userName]);
-
-  const isPerfect = result.aiResponse?.message === 'PERFECT';
+  }, [gameState, user, firestore, userProfile, userName, isPendingLeaderboardUpdate, lastAttempt]);
 
   const renderResultText = () => {
     if (!result.aiResponse) return null;
 
     if (isPerfect) {
       return (
-        <p className="font-headline text-3xl uppercase tracking-[0.2em] text-purple-300">
-          PERFECT
-        </p>
+        <div className="flex flex-col items-center gap-1">
+          <p className="font-headline text-3xl uppercase tracking-[0.2em] text-purple-300">
+            {result.aiResponse.message}
+          </p>
+          <p className="font-headline text-sm text-white/50 sm:text-base">
+            {result.aiResponse.socialProofLine}
+          </p>
+        </div>
       );
     }
     return (
